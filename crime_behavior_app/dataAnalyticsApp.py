@@ -61,6 +61,19 @@ app.layout = dbc.Container(
         ]),
         html.Hr(),
         dbc.Row([
+            dbc.Col([
+                html.H5()
+            ], md=7),
+            dbc.Col(dcc.Tabs(
+                id="low-high-selector",
+                children=[
+                    dcc.Tab(label="Highest", value="highest"),
+                    dcc.Tab(label="Lowest", value="lowest")
+                ],
+                value='highest',  # default value
+            ), md=5),
+        ]),
+        dbc.Row([
             dbc.Col(dcc.Graph(
                 id="graphs-by-selection",
             ), md=7),
@@ -68,15 +81,6 @@ app.layout = dbc.Container(
                 id="graphs-top-n-results",
             ), md=5),
         ]),
-        # dbc.Row([
-        #     dbc.Col(dcc.Graph(
-        #         id="graphs-top-n-results",
-        #     ), md=12),
-        # ]),
-        # html.Hr(),
-        # dbc.Row([
-        #     dbc.Col(dcc.Graph(id="incidents-by-type-graph"), md=12),
-        # ])
     ])
 )
 
@@ -86,32 +90,51 @@ app.layout = dbc.Container(
         Output("incidents-total", "children"),
         Output("graphs-by-selection", "figure"),
         Output("graphs-top-n-results", "figure"),
-        # Output("incidents-by-type-graph", "figure")
     ],
     [
         Input("year-selector", "value"),
         Input("location-selector", "value"),
         Input("crimes-type-selector", "value"),
+        Input("low-high-selector", "value"),
     ]
 )
-def update_graphs(selected_year: int, selected_location: str, selected_type: str):
+def update_graphs(selected_year: int, selected_location: str, selected_type: str, radioButtonValue: str):
     incidents_total = data[data["year"] == selected_year]["incidents"].sum(numeric_only=True)
     if isinstance(selected_year, int) and selected_year is not None and selected_year >= 0:
         # year, location, type filters selected
         if selected_location is not None and len(selected_location) > 0 and selected_type is not None and len(selected_type) > 0:
             filtered_df = data.loc[(data["year"] == selected_year) & (data["location"] == selected_location) & (data["type_of_crime"] == selected_type)]
-            incidents_by_year = filtered_df.groupby("year").sum(numeric_only=True)["incidents"]
+
+            filtered_df["x"] = filtered_df["year"].astype(str) + ", " + filtered_df["location"] + ", " + filtered_df["type_of_crime"]
             fig1 = px.bar(
-                incidents_by_year,
+                filtered_df,
                 title=f"Number of {selected_type} Crimes in {selected_year} in {selected_location}",
-                x=incidents_by_year.index,
+                x='x',
                 y='incidents',
                 labels={
-                    'year': 'Years',
+                    'x': 'Year, Location, Type of Crime',
                     'incidents': 'No. of Crimes'
                 },
+                color_discrete_sequence=px.colors.qualitative.Alphabet
             )
-            fig2 = {}
+            filtered_df = data.loc[(data["year"] == selected_year) & (data["type_of_crime"] == selected_type)]
+            incidents_by_locations = filtered_df.groupby("location").sum(numeric_only=True)["incidents"]
+            if radioButtonValue == "highest":
+                top5_crimes_by_location = incidents_by_locations.nlargest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_location.index,
+                    values=top5_crimes_by_location.values,
+                    title=f"Highest crimes in {selected_year} in {selected_type}",
+                    color_discrete_sequence=px.colors.qualitative.Dark2
+                )
+            else:
+                top5_crimes_by_location = incidents_by_locations.nsmallest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_location.index,
+                    values=top5_crimes_by_location.values,
+                    title=f"Lowest crimes in {selected_year} in {selected_type}",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
             # year and location selected, type is not selected
         elif (selected_location is not None and len(selected_location) > 0) and (selected_type is None):
             filtered_df = data.loc[(data["year"] == selected_year) & (data["location"] == selected_location)]
@@ -125,8 +148,24 @@ def update_graphs(selected_year: int, selected_location: str, selected_type: str
                     'type_of_crime': 'Type of Crimes',
                     'incidents': 'No. of Crimes'
                 },
+                color_discrete_sequence=px.colors.qualitative.Light24
             )
-            fig2 = {}
+            if radioButtonValue == "highest":
+                top5_crimes_by_type = incidents_by_crime_type.nlargest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_type.index,
+                    values=top5_crimes_by_type.values,
+                    title=f"Highest crimes in {selected_year} in {selected_location}",
+                    color_discrete_sequence=px.colors.qualitative.Dark2
+                )
+            else:
+                top5_crimes_by_type = incidents_by_crime_type.nsmallest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_type.index,
+                    values=top5_crimes_by_type.values,
+                    title=f"Lowest crimes in {selected_year} in {selected_location}",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
             # year and type are selected, location is not selected
         elif (selected_location is None) and (selected_type is not None and len(selected_type) > 0):
             filtered_df = data.loc[(data["year"] == selected_year) & (data["type_of_crime"] == selected_type)]
@@ -140,15 +179,24 @@ def update_graphs(selected_year: int, selected_location: str, selected_type: str
                     'location': 'Locations',
                     'incidents': 'No. of Crimes'
                 },
+                color_discrete_sequence=px.colors.qualitative.Pastel
             )
-            top5_crimes_by_location = incidents_by_locations.nlargest(5)
-            fig2 = px.pie(
-                names=top5_crimes_by_location.index,
-                values=top5_crimes_by_location.values,
-                title=f"Highest crimes in {selected_year} in {selected_type}"
-            )
-            # adjust title font size and position
-            # set plot size
+            if radioButtonValue == "highest":
+                top5_crimes_by_location = incidents_by_locations.nlargest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_location.index,
+                    values=top5_crimes_by_location.values,
+                    title=f"Highest crimes in {selected_year} in {selected_type}",
+                    color_discrete_sequence=px.colors.qualitative.Dark2
+                )
+            else:
+                top5_crimes_by_location = incidents_by_locations.nsmallest(5)
+                fig2 = px.pie(
+                    names=top5_crimes_by_location.index,
+                    values=top5_crimes_by_location.values,
+                    title=f"Lowest crimes in {selected_year} in {selected_type}",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
         # only year is selected, in the dashboard landing page view
         else:
             incidents_by_year = data.groupby("year").sum(numeric_only=True)["incidents"]
@@ -161,14 +209,26 @@ def update_graphs(selected_year: int, selected_location: str, selected_type: str
                     'year': 'Years',
                     'incidents': 'No. of Crimes'
                 },
+                color_discrete_sequence=px.colors.qualitative.Bold
             )
-            top_5_crimes_by_year = incidents_by_year.nlargest(5)
-            # Plot the top 5 crimes by year in a pie chart
-            fig2 = px.pie(
-                names=top_5_crimes_by_year.index,
-                values=top_5_crimes_by_year.values,
-                title="Highest crimes recorded years"
-            )
+            if radioButtonValue == "highest":
+                top_5_crimes_by_year = incidents_by_year.nlargest(5)
+                # Plot the top 5 crimes by year in a pie chart
+                fig2 = px.pie(
+                    names=top_5_crimes_by_year.index,
+                    values=top_5_crimes_by_year.values,
+                    title="Highest crimes recorded years",
+                    color_discrete_sequence=px.colors.qualitative.Dark2
+                )
+            else:
+                top_5_crimes_by_year = incidents_by_year.nsmallest(5)
+                # Plot the lowest 5 crimes by year in a pie chart
+                fig2 = px.pie(
+                    names=top_5_crimes_by_year.index,
+                    values=top_5_crimes_by_year.values,
+                    title="Lowest crimes recorded years",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
 
     return incidents_total, fig1, fig2
 
